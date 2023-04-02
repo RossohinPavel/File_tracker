@@ -1,72 +1,98 @@
-import re
+from re import fullmatch
 import os
-import time
-import shutil
-
+from time import sleep as time_sleep, time as time_time
+from shutil import copy2
 
 DAY_LIMIT = 3
-SOURCE = 'D:/тест/Book'
-DESTINATION = 'E:/copy here'
-TIMER = 300
+TIMER = 120
+
+SOURCE = 'D:/тест/Book2'
+DESTINATION = 'D:/Архив/copy here'
+
+OBSERVING_LIST = []
 
 
-def get_order_dict():
-    day_dict = {}
-    for day in reversed(os.listdir(SOURCE)):
-        if re.fullmatch(r'\d{4}-\d{2}-\d{2}', day):
-            day_dict[day] = tuple(order for order in os.listdir(f'{SOURCE}/{day}') if re.fullmatch(r'\d{6}', order))
-        if len(day_dict) == DAY_LIMIT:
-            break
-    return {key: day_dict[key] for key in reversed(day_dict)}
+class Order:
+    __slots__ = 'creation_date', 'name', 'status', '__prev_file_len', '__current_file_len'
+
+    def __init__(self, creation_date, name):
+        self.creation_date = creation_date
+        self.name = name
+        self.status = 'traceable'
+        self.__prev_file_len = 0
+        self.__current_file_len = 0
+
+    def check(self):
+        """Функция для подсчета и проверки. Yield'ит строку с относительным путем файла, если его нет в DESTINATION"""
+        counter = 0
+        for root, dirs, files in os.walk(f'{SOURCE}/{self.creation_date}/{self.name}'):
+            for file in files:
+                counter += 1
+                rel_path = os.path.relpath(f'{root}/{file}', SOURCE)
+                if not os.path.exists(f'{DESTINATION}/{rel_path}'):
+                    yield rel_path
+        self.__prev_file_len = self.__current_file_len
+        self.__current_file_len = counter
+        if self.__current_file_len == self.__prev_file_len:
+            self.status = 'finished'
+
+    def __eq__(self, other):
+        """other - строка с именем заказа"""
+        if other == self.name:
+            return True
+        return False
 
 
-def get_file_list(path):
-    for root, dirs, files in os.walk(path):
-        for file in files:
-            root = root.replace(path, '')
-            if root.startswith('\\'):
-                root = root[1:]
-            yield root, file
-
-
-def main():
-    flag = False
+def observing_update():
+    """Функция для обновления OBSERVING_LIST.
+    Добавляет новые объект заказов для отслеживания, если их там нет.
+    Удаляет из него объекты, которые находятся за пределами отслеживаемого временного промежутка.
+    """
     print('Сканирую на наличие новых заказов'.ljust(100, ' '), end='\r')
-    order_dict = get_order_dict()
-    folder_list, file_list = set(), []
-    for day in order_dict:
-        for order in order_dict[day]:
-            s_files = tuple(get_file_list(f'{SOURCE}/{day}/{order}'))
-            d_files = tuple(get_file_list(f'{DESTINATION}/{day}/{order}'))
-            for line in s_files:
-                if line not in d_files:
-                    folder_list.add(f'{day}/{order}/{line[0]}')
-                    file_list.append(f'{day}/{order}/{line[0]}/{line[1]}')
-    if file_list:
-        flag = True
-        print('Создаю каталоги'.ljust(100, ' '), end='\r')
-        for name in folder_list:
-            os.makedirs(f'{DESTINATION}/{name}', exist_ok=True)
-        file_list_len = len(file_list)
-        for file in file_list:
-            splited_line = file.split('/')
-            print(f'Осталось: {file_list_len} файлов ({splited_line[1]} - {splited_line[-1]})'.ljust(100, ' '), end='\r')
-            shutil.copy2(f'{SOURCE}/{file}', f'{DESTINATION}/{file}')
-            file_list_len -= 1
-    return flag
+    observing_period = []               # Шаг 1 - формируем отслеживаемый период
+    for x in reversed(os.listdir(SOURCE)):
+        if fullmatch(r'\d{4}-\d{2}-\d{2}', x):
+            observing_period.append(x)
+        if len(observing_period) == DAY_LIMIT:
+            break
+    for day in observing_period:        # Шаг 2 - Наполняем OBSERVING_LIST объектами заказов
+        for order_name in os.listdir(f'{SOURCE}/{day}'):
+            if order_name not in OBSERVING_LIST and fullmatch(r'\d{6}', order_name):
+                OBSERVING_LIST.append(Order(day, order_name))
+    for order_obj in OBSERVING_LIST:    # Шаг 3 - очищаем список от заказов вне временного отрезка
+        if order_obj.creation_date not in observing_period:
+            OBSERVING_LIST.remove(order_obj)
+
+
+def init_copy():
+    """Инициализация копирования файлов"""
+    print('Получаю список файлов'.ljust(100, ' '), end='\r')
+    file_list = []
+    for order_obj in OBSERVING_LIST:
+        if order_obj.status != 'traceable':
+            continue
+        file_list.extend(order_obj.check())
+    print('Создаю каталоги'.ljust(100, ' '), end='\r')
+    for dir_name in set('/'.join(x.split('\\')[:-1]) for x in file_list):
+        os.makedirs(f'{DESTINATION}/{dir_name}', exist_ok=True)
+    file_list_len = len(file_list)
+    for file in file_list:
+        splited = file.split('\\')
+        print(f'Осталось: {file_list_len} файлов ({splited[1]} - {splited[-1]})'.ljust(100, ' '), end='\r')
+        copy2(f'{SOURCE}/{file}', f'{DESTINATION}/{file}')
+        file_list_len -= 1
 
 
 if __name__ == '__main__':
     while True:
-        start = int(time.time())
-        func_work = main()
-        end = int(time.time())
-        if func_work:
-            TIMER = 300
-        if not func_work and TIMER < 4800:
-            TIMER += TIMER
-        count = TIMER - (end - start)
-        while count > 0:
-            print(f'Копирование завершено. Жду {count} секунд'.ljust(100, ' '), end='\r')
-            time.sleep(1)
-            count -= 1
+        start = time_time()
+        try:    # Оборачиваем в try, во избежание ошибок сервера
+            observing_update()
+            init_copy()
+        except:
+            pass
+        timer = int(TIMER - (time_time() - start))
+        print(f'Завершено. Ожидаю {timer//60}:{timer%60}', end='\r')
+        while timer > 0:
+            time_sleep(1)
+            timer -= 1
