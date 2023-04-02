@@ -6,7 +6,7 @@ from shutil import copy2
 DAY_LIMIT = 3
 TIMER = 120
 
-SOURCE = 'D:/тест/Book2'
+SOURCE = 'D:/тест/Book3'
 DESTINATION = 'D:/Архив/copy here'
 
 OBSERVING_LIST = []
@@ -92,7 +92,7 @@ if __name__ == '__main__':
         except:
             pass
         timer = int(TIMER - (time_time() - start))
-        print(f'Завершено. Ожидаю {timer//60}:{timer%60}', end='\r')
         while timer > 0:
+            print(f'Завершено. Ожидаю {timer // 60}:{timer % 60}'.ljust(100, ' '), end='\r')
             time_sleep(1)
             timer -= 1
