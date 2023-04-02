@@ -6,7 +6,7 @@ from shutil import copy2
 DAY_LIMIT = 3
 TIMER = 120
 
-SOURCE = 'D:/тест/Book3'
+SOURCE = 'D:/тест/Book2'
 DESTINATION = 'D:/Архив/copy here'
 
 OBSERVING_LIST = []
@@ -55,7 +55,7 @@ def observing_update():
             observing_period.append(x)
         if len(observing_period) == DAY_LIMIT:
             break
-    for day in observing_period:        # Шаг 2 - Наполняем OBSERVING_LIST объектами заказов
+    for day in reversed(observing_period):        # Шаг 2 - Наполняем OBSERVING_LIST объектами заказов
         for order_name in os.listdir(f'{SOURCE}/{day}'):
             if order_name not in OBSERVING_LIST and fullmatch(r'\d{6}', order_name):
                 OBSERVING_LIST.append(Order(day, order_name))
